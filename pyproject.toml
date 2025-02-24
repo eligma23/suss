@@ -1,0 +1,15 @@
+[project]
+name = "bugnet"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "json-repair>=0.38.0",
+    "litellm>=1.59.12",
+    "rich>=13.9.4",
+    "saplings>=5.0.9",
+    "sortedcollections>=2.1.0",
+    "tree-sitter==0.21.3",
+    "tree-sitter-languages==1.10.2",
+]
