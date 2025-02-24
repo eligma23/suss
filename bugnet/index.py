@@ -1,7 +1,7 @@
 # Standard library
 import re
 from pathlib import Path
-from typing import Generator, List, Optional
+from typing import List, Optional
 from collections import namedtuple
 from functools import cached_property
 
@@ -16,6 +16,11 @@ except ImportError:
     from resources import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
 
 
+#########
+# HELPERS
+#########
+
+
 MAX_HEADER_SIZE = 10
 MARGIN = 3
 PADDING = 1
@@ -23,12 +28,6 @@ MIN_BLOCK_SIZE = 5
 SHOW_FACTOR = 0.10
 MAX_TO_SHOW = 25
 MIN_TO_SHOW = 5
-
-
-#########
-# HELPERS
-#########
-
 
 HeaderPart = namedtuple("HeaderPart", ["size", "start", "end"])
 LineRange = namedtuple("LineRange", ["start", "end"])
@@ -49,7 +48,7 @@ class LineContext(object):
         if not size:
             return
 
-        self.header_parts[start].append(HeaderPart(size, start, end))
+        self.header_parts.append(HeaderPart(size, start, end))
 
     def add_scope(self, start: int):
         self.scopes.add(start)
@@ -88,11 +87,10 @@ def should_index_file(file: Path) -> bool:
 
 def should_index_dir(dir: Path) -> bool:
     # TODO: Use .gitignore
-    return not any(re.search(pattern, dir) for pattern in BOILERPLATE_REGEXES)
+    return not any(re.search(pattern, str(dir)) for pattern in BOILERPLATE_REGEXES)
 
 
 def enumerate_files(root_dir: Path, sub_dir: Optional[Path] = None):
-    # TODO: Parallelize
     sub_dir = root_dir if not sub_dir else sub_dir
 
     for item in sub_dir.iterdir():
@@ -102,10 +100,11 @@ def enumerate_files(root_dir: Path, sub_dir: Optional[Path] = None):
 
             yield from enumerate_files(root_dir, item)
         elif item.is_file():
-            if not should_index_file(item):
+            file = File(root_dir, item)
+            if not should_index_file(file):
                 continue
 
-            yield File(root_dir, item)
+            yield file
 
 
 ######
@@ -113,20 +112,28 @@ def enumerate_files(root_dir: Path, sub_dir: Optional[Path] = None):
 ######
 
 
+# TODO: Confirm that search works properly
 class File(object):
     def __init__(self, root_dir: Path, path: Path):
         self.root_dir = root_dir
         self.path = path
 
-        with open(self.path, "r") as f:
-            self.code = f.read()
+        try:
+            with open(self.path, "r") as f:
+                self.code = f.read()
+        except UnicodeDecodeError:
+            self.code = ""
 
         self.lines = self.code.splitlines()
         self.num_lines = len(self.lines) + 1
         self.line_contexts = [LineContext(i) for i in range(self.num_lines)]
+        self.index_ast()
 
     def __hash__(self) -> str:
         return hash(self.abs_path)
+
+    def __repr__(self) -> str:
+        return self.rel_path
 
     @cached_property
     def last_lineno(self) -> int:
@@ -138,7 +145,7 @@ class File(object):
         for line_num, line in enumerate(self.lines):
             content += f"{line_num + 1} {line}\n"
 
-        return content
+        return content.strip("\n")
 
     @cached_property
     def rel_path(self) -> str:
@@ -162,19 +169,23 @@ class File(object):
 
     @cached_property
     def is_code_file(self) -> bool:
-        if self.extension not in LANGUAGE_EXTENSIONS:
-            return False
+        return self.extension in LANGUAGE_EXTENSIONS
 
-        if LANGUAGE_EXTENSIONS[self.extension]["is_code"]:
-            return True
+    @cached_property
+    def language(self) -> Optional[str]:
+        if not self.is_code_file:
+            return None
 
-        return False
+        return LANGUAGE_EXTENSIONS[self.extension]
 
     @cached_property
     def is_boilerplate(self) -> bool:
         return any(re.search(pattern, self.rel_path) for pattern in BOILERPLATE_REGEXES)
 
-    def index(self):
+    def index_ast(self):
+        if not self.is_code_file:
+            return
+
         def recurse_tree(node):
             start, end = node.start_point, node.end_point
             start_line, end_line = start[0], end[0]
@@ -196,7 +207,7 @@ class File(object):
         recurse_tree(tree.root_node)
 
     # Adapted from Paul Gauthier's grep-ast
-    def search(self, pattern: str):
+    def search(self, pattern: str) -> List[int]:
         parent_scopes = OrderedSet()
         matches = OrderedSet()
         show_lines = OrderedSet()
@@ -232,6 +243,8 @@ class File(object):
             return children
 
         def add_parent_scopes(i: int):
+            nonlocal show_lines, parent_scopes
+
             if i in parent_scopes:
                 return
 
@@ -242,18 +255,20 @@ class File(object):
 
             for scope in self.line_contexts[i].scopes:
                 header = self.line_contexts[scope].header
-                show_lines.update(range(header.start, header.end))
+                show_lines |= OrderedSet(range(header.start, header.end))
                 last_line = get_last_line_of_scope(scope)
                 add_parent_scopes(last_line)
 
         def add_child_context(i: int):
+            nonlocal show_lines
+
             if not self.line_contexts[i].nodes:
                 return
 
             last_line = get_last_line_of_scope(i)
             size = last_line - i
             if size < MIN_BLOCK_SIZE:
-                show_lines.update(range(i, last_line + 1))
+                show_lines |= OrderedSet(range(i, last_line + 1))
                 return
 
             children = []
@@ -289,7 +304,7 @@ class File(object):
             add_child_context(line_num)
 
         # Add the top margin lines of the file
-        show_lines.update(range(MARGIN))
+        show_lines |= OrderedSet(range(MARGIN))
 
         # Close small gaps
         show_lines = OrderedSet(sorted(show_lines))
@@ -309,31 +324,34 @@ class File(object):
                 closed_show_lines.add(line_num + 1)
         show_lines = OrderedSet(sorted(closed_show_lines))
 
+        return list(show_lines)
+
 
 class Chunk(object):
     def __init__(self, line_nums: List[int], file: File):
-        """
-        Line #s are 1-indexed TODO: ?
-        Chunk is not necessarily contiguous.
-        """
-
-        self.line_nums = OrderedSet(line_nums)
+        # Line numbers are 1-indexed and not necessarily contiguous
+        self.line_nums = line_nums
         self.file = file
 
     def __hash__(self) -> str:
-        line_nums_str = ",".join(self.line_nums)
+        line_nums_str = ",".join(str(num) for num in self.line_nums)
         file_str = self.file.abs_path
         return hash(f"{file_str}::{line_nums_str}")
 
+    def __repr__(self) -> str:
+        return self.to_string()
+
     @cached_property
     def lines(self) -> List[str]:
-        return [self.file.lines[i] for i in self.line_nums]
+        return [self.file.lines[i - 1] for i in self.line_nums]
 
     def to_string(self, line_nums: bool = True, dots: bool = True) -> str:
         output_str = ""
 
-        use_dots = not (0 in self.line_nums)
+        use_dots = not (1 in self.line_nums)
         for line_num, line in enumerate(self.file.lines):
+            line_num = line_num + 1
+
             if line_num not in self.line_nums:
                 if use_dots and dots:
                     output_str += "⋮...\n"
@@ -341,25 +359,30 @@ class Chunk(object):
 
                 continue
 
-            output_str += f"{line_num + 1} {line}\n" if line_nums else f"{line}\n"
+            output_str += f"{line_num} {line}\n" if line_nums else f"{line}\n"
             use_dots = True
 
-        return output_str
+        return output_str.strip("\n")
 
 
 class Index(object):
     def __init__(self, root_dir: Path):
         self.root_dir = root_dir
-        self.files = {f.rel_path: f for f in enumerate_files(self.root_dir)}
+        self._files = {f.rel_path: f for f in enumerate_files(self.root_dir)}
+
+    @property
+    def files(self) -> List[str]:
+        return list(self._files.values())
 
     def get_file(self, rel_path: str) -> File:
-        return self.files[rel_path]
+        return self._files[rel_path]
 
-    def search_code(self, pattern: str) -> List[Chunk]:
-        # TODO: Parallelize
-
+    def search_code(self, pattern: str, exclude: Optional[File] = None) -> List[Chunk]:
         results = OrderedSet()
-        for file in self.files.values():
+        for file in self._files.values():
+            if exclude and file.rel_path == exclude.rel_path:
+                continue
+
             line_matches = file.search(pattern)
             if not line_matches:
                 continue
