@@ -119,17 +119,17 @@ class FileSearchTool(Tool):
     ):
         # Base attributes
         self.name = "search_files"
-        self.description = "Search the file paths in a codebase. Returns file paths that may not exactly match the query, but will be roughly similar. Use when you want to find a specific file or directory."
+        self.description = "Search the file paths in a codebase. Returns file paths that may not exactly match the query, but will be roughly similar."
         self.parameters = {
             "type": "object",
             "properties": {
                 "intent": {
                     "type": "string",
-                    "description": "Concise, one-sentence description of your goal in using this tool.",  # TODO: Examples
+                    "description": "Concise, one-sentence description of your intent behind the search. E.g. 'Find files in the server directory', 'Locate the DTOs module', 'Get all files related to tooling'.",
                 },
                 "query": {
                     "type": "string",
-                    "description": "A search query. Should not contain whitespace. E.g. 'server/src', 'main', 'dtos.py'.",
+                    "description": "A search query. Should NOT contain whitespace. E.g. 'server/src', 'main', 'dtos.py'.",
                 },
             },
             "required": ["intent", "query"],

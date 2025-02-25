@@ -22,37 +22,25 @@ except ImportError:
 
 MAX_CHUNK_DISTANCE = 5
 
-PROMPT = """Below is the content of the code file {file_path}:
+PROMPT = """I want to find all the code in a file that's relevant to a query.
+
+Your output should be a list of line ranges. Each line range should correspond to a block of code that's relevant to the query.
+
+Line ranges should be inclusive (e.g. {{"start": 12, "end": 15}} includes lines 12, 13, 14, and 15).
+
+--
+
+Here is the file ({file_path}):
 
 <code>
 {file_content}
 </code>
 
-Your job is to find all the code in this file that's relevant to the user's query.
+And here is the query:
 
-<rules>
-- Your output MUST be a list of line ranges that contain the relevant code.
-- Do NOT output line ranges that are not in the file above.
-- Line ranges are inclusive (e.g. [12, 15] includes lines 12, 13, 14, and 15).
-</rules>
-
-<examples>
-Q: Find database connection setup
-A: [{{'start': 12, 'end': 15}}]
-
-Q: Where are the authentication API endpoints defined
-A: [{{'start': 37, 'end': 50}}]
-
-Q: Cache implementation
-A: [{{'start': 486, 'end': 501}}, {{'start': 520, 'end': 560}}, {{'start': 590, 'end': 631}}]
-
-Q: Training loop implementation
-A: []
-
-Q: Error handling logic for file I/O
-A: [{{'start': 68, 'end': 74}}, {{'start': 82, 'end': 85}}, {{'start': 103, 'end': 107}}, {{'start': 187, 'end': 193}}]
-</examples>
-"""
+<query>
+{query}
+</query>"""
 
 
 def truncate_file_content(file: File, max_tokens: int = 40000) -> str:
@@ -66,10 +54,11 @@ async def extract_chunks(file: File, query: str, model: str) -> List[Chunk]:
     file_content = truncate_file_content(file)
     messages = [
         {
-            "role": "system",
-            "content": PROMPT.format(file_path=file_path, file_content=file_content),
+            "role": "user",
+            "content": PROMPT.format(
+                file_path=file_path, file_content=file_content, query=query
+            ),
         },
-        {"role": "user", "content": query},
     ]
     response = await acompletion(
         model=model,
@@ -99,7 +88,7 @@ async def extract_chunks(file: File, query: str, model: str) -> List[Chunk]:
                                 "required": ["start", "end"],
                                 "additionalProperties": False,
                             },
-                            "description": "List of line ranges that contain the relevant code.",
+                            "description": "List of line ranges that contain relevant code.",
                         },
                     },
                     "required": ["line_ranges"],
@@ -170,22 +159,22 @@ class ReadFileTool(Tool):
     ):
         # Base attributes
         self.name = "read_file"
-        self.description = "Reads a file in the codebase and extracts code snippets that are relevant to the query. Use when you need additional context on a specific file in the codebase."
+        self.description = "Read a file in the codebase. Returns the most relevant subsets of the file."
         self.parameters = {
             "type": "object",
             "properties": {
                 "intent": {
                     "type": "string",
-                    "description": "Concise, one-sentence description of your goal in using this tool.",  # TODO: Examples
+                    "description": "Concise, one-sentence description of your intent behind reading the file.",  # TODO: Examples
                 },
                 "file": {
                     "type": "string",
                     "enum": [],
-                    "description": "The path to the file that you want to read.",
+                    "description": "The path to the file you want to read.",
                 },
                 "query": {
                     "type": "string",
-                    "description": "A semantic search query that captures what you're looking for in the file.",
+                    "description": "A semantic search query. What are you looking for in the file?",
                 },
             },
             "required": ["intent", "file", "query"],
@@ -211,7 +200,6 @@ class ReadFileTool(Tool):
                 formatted_chunks.append(formatted_chunk)
 
         formatted_chunks = "\n\n".join(formatted_chunks)
-        print("formatted_chunks", formatted_chunks)
         return formatted_chunks
 
     def update_definition(self, trajectory: List[Message] = [], **kwargs):
