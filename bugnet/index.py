@@ -29,16 +29,15 @@ SHOW_FACTOR = 0.10
 MAX_TO_SHOW = 25
 MIN_TO_SHOW = 5
 
-HeaderPart = namedtuple("HeaderPart", ["size", "start", "end"])
 LineRange = namedtuple("LineRange", ["start", "end"])
 
 
 class LineContext(object):
     def __init__(self, line_num: int):
         self.line_num = line_num
-        self.scopes = OrderedSet()
-        self.nodes = []
-        self.header_parts = []
+        self.scopes = OrderedSet()  # Scopes (line #s) that the line belongs to
+        self.nodes = []  # AST nodes that contain the line
+        self.header_parts = []  # Lines that make up the scope header
 
     def add_node(self, node):
         self.nodes.append(node)
@@ -48,7 +47,7 @@ class LineContext(object):
         if not size:
             return
 
-        self.header_parts.append(HeaderPart(size, start, end))
+        self.header_parts.append((size, start, end))
 
     def add_scope(self, start: int):
         self.scopes.add(start)
@@ -57,7 +56,7 @@ class LineContext(object):
     def header(self) -> LineRange:
         header_parts = sorted(self.header_parts)
         if len(header_parts) > 1:
-            size, start, end = self.header_parts[0]
+            size, start, end = header_parts[0]
             if size > MAX_HEADER_SIZE:
                 end = start + MAX_HEADER_SIZE
         else:
@@ -112,7 +111,6 @@ def enumerate_files(root_dir: Path, sub_dir: Optional[Path] = None):
 ######
 
 
-# TODO: Confirm that search works properly
 class File(object):
     def __init__(self, root_dir: Path, path: Path):
         self.root_dir = root_dir
@@ -190,14 +188,11 @@ class File(object):
             start, end = node.start_point, node.end_point
             start_line, end_line = start[0], end[0]
 
-            for line in range(start_line, end_line + 1):
-                line_context = self.line_contexts[line]
+            self.line_contexts[start_line].add_node(node)
+            self.line_contexts[start_line].add_header_part(start_line, end_line)
 
-                if line == start_line:
-                    line_context.add_node(node)
-                    line_context.add_header_part(start_line, end_line)
-
-                line_context.add_scope(start_line)
+            for line_num in range(start_line, end_line + 1):
+                self.line_contexts[line_num].add_scope(start_line)
 
             for child in node.children:
                 recurse_tree(child)
@@ -221,7 +216,7 @@ class File(object):
             return []
 
         # Add padding
-        for line in show_lines:
+        for line in list(show_lines):
             for new_line in range(line - PADDING, line + PADDING + 1):
                 if new_line >= self.num_lines:
                     continue
@@ -253,10 +248,10 @@ class File(object):
             if i >= len(self.line_contexts):
                 return
 
-            for scope in self.line_contexts[i].scopes:
-                header = self.line_contexts[scope].header
+            for line_num in self.line_contexts[i].scopes:
+                header = self.line_contexts[line_num].header
                 show_lines |= OrderedSet(range(header.start, header.end))
-                last_line = get_last_line_of_scope(scope)
+                last_line = get_last_line_of_scope(line_num)
                 add_parent_scopes(last_line)
 
         def add_child_context(i: int):
@@ -309,22 +304,22 @@ class File(object):
         # Close small gaps
         show_lines = OrderedSet(sorted(show_lines))
         closed_show_lines = OrderedSet(show_lines)
-        for line_num in range(len(show_lines) - 1):
-            if show_lines[line_num + 1] - show_lines[line_num] == 2:
-                closed_show_lines.add(show_lines[line_num] + 1)
+        for index in range(len(show_lines) - 1):
+            if show_lines[index + 1] - show_lines[index] == 2:
+                closed_show_lines.add(show_lines[index] + 1)
         for line_num, line in enumerate(self.lines):
             if line_num not in closed_show_lines:
                 continue
 
             if (
-                self.lines[line_num].strip()
+                line.strip()
                 and line_num < self.num_lines - 2
                 and not self.lines[line_num + 1].strip()
             ):
                 closed_show_lines.add(line_num + 1)
         show_lines = OrderedSet(sorted(closed_show_lines))
 
-        return list(show_lines)
+        return [i + 1 for i in show_lines]
 
 
 class Chunk(object):
