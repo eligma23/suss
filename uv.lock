@@ -383,11 +383,11 @@ wheels = [
 
 [[package]]
 name = "json-repair"
-version = "0.38.0"
+version = "0.39.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/92/ac/b1ad5d938fe721dba1c16dfa4f9100747d0cb477a2ccb8713e167540b2d7/json_repair-0.38.0.tar.gz", hash = "sha256:df9fbe6ba8d02f2eb17010508c9838b9c708557f67b1429829874eed559e7ca3", size = 29744 }
+sdist = { url = "https://files.pythonhosted.org/packages/95/60/6d1599bc01070d9fe3840d245ae80fd24b981c732d962842825ce7a9fde6/json_repair-0.39.1.tar.gz", hash = "sha256:e90a489f247e1a8fc86612a5c719872a3dbf9cbaffd6d55f238ec571a77740fa", size = 30040 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/11/a5/7d84bbd06272b52fd8d8e1f2dec32d6a1984f4f940e5c9d32ef3f3886152/json_repair-0.38.0-py3-none-any.whl", hash = "sha256:e615ab1bd69c986cdb21d4a2378308ce6f91e0168c036cde7188f69abc6e9459", size = 20567 },
+    { url = "https://files.pythonhosted.org/packages/ff/b9/2e445481555422b907dab468b53574bc1e995099ca1a1201d0d876ca05e9/json_repair-0.39.1-py3-none-any.whl", hash = "sha256:3001409a2f319249f13e13d6c622117a5b70ea7e0c6f43864a0233cdffc3a599", size = 20686 },
 ]
 
 [[package]]
@@ -419,7 +419,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.59.12"
+version = "1.61.20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -434,9 +434,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/45/b0/89127507996f7ae2dc7132ef1bb3f39b430280d43f6a6400559117c87a08/litellm-1.59.12.tar.gz", hash = "sha256:8d9aa62dc8e8b03c6e74536b9e2639a9355527a4e9c9e76af05ad03dd8a46c34", size = 6437331 }
+sdist = { url = "https://files.pythonhosted.org/packages/00/39/ac5e350e4af3ef59d6852d074bc6e79ffbac4c4e816dd76c180267ab18ad/litellm-1.61.20.tar.gz", hash = "sha256:0b0204f56e08c92efd2f9e4bfb850c25eaa95fb03a56aaa21e5e29b2391c9067", size = 6577019 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/02/c9f199552d39b41588807d4df41f129b56570e1e4145a0cc4391b1f588c5/litellm-1.59.12-py3-none-any.whl", hash = "sha256:72c19a7612ec4684c98b451762ef04b6edeaf0aae540e1f5108698ee812023b9", size = 6731448 },
+    { url = "https://files.pythonhosted.org/packages/96/4e/310924cdf3114084ca63820268c87047c757b60b0eca86b039b8acc67084/litellm-1.61.20-py3-none-any.whl", hash = "sha256:8158f96ceda0d76bb59a59d868686e888e32d66b2380e149c6a7a0746f7a5bc9", size = 6887617 },
 ]
 
 [[package]]
