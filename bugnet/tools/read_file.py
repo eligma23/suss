@@ -96,6 +96,7 @@ async def extract_chunks(file: File, query: str, model: str) -> List[Chunk]:
                 },
             },
         },
+        drop_params=True,
     )
     response = json_repair.loads(response.choices[0].message.content)
     line_ranges = [lr for lr in response["line_ranges"] if lr["start"] <= lr["end"]]

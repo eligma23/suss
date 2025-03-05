@@ -1,9 +1,8 @@
 # Standard library
-from typing import Dict, List, Union
+from typing import List
 
 # Third party
-from saplings import COTAgent
-from saplings.llms import OpenAI
+from saplings import COTAgent, Model
 from saplings.dtos import Message
 
 # Local
@@ -24,6 +23,7 @@ except ImportError:
 #########
 
 
+# TODO: Improve prompt
 SYSTEM_PROMPT = """<assistant>
 You will be given a file from a codebase.
 Your job is to call functions to find information about the codebase that will help you analyze the file for bugs.
@@ -48,7 +48,7 @@ But if a file depends on (or affects) many other constructs in the codebase, you
 def build_prompt(file: File) -> str:
     prompt = f"<path>{file.path}</path>\n"
     prompt += f"<code>\n{file.content}\n</code>\n\n"
-    prompt += "#####\n\nAnalyze the file above for bugs."
+    prompt += "--\n\nAnalyze the file above for bugs."
     return prompt
 
 
@@ -85,9 +85,7 @@ class Agent:
             ReadFileTool(self.index, self.model, file, update_progress),
             FindBugsTool(self.model, file, update_progress),
         ]
-        model = OpenAI(
-            model="gpt-4o"
-        )  # TODO: Refactor how models are handled in saplings
+        model = Model(self.model)
         agent = COTAgent(
             tools,
             model,

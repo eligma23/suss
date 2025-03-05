@@ -9,7 +9,7 @@ import json_repair
 from saplings.dtos import Message
 from saplings.abstract import Tool
 from sortedcollections import OrderedSet
-from litellm import acompletion, encode, decode
+from litellm import acompletion, encode
 
 # Local
 try:
@@ -44,6 +44,14 @@ The code file you're analyzing belongs to a codebase. Below is additional contex
 <context>
 {context}
 </context>"""
+
+
+def get_reasoning_model(model: str) -> str:
+    # TODO:
+    # Get the provider's reasoning model (e.g. openai -> openai/o3-mini, anthropic -> anthropic/claude-3.7-sonnet, etc.)
+    # If provider has one, check if it's available with LiteLLM
+    # If not available, or if provider doesn't have one, fallback to default model
+    return model
 
 
 def get_chunks(trajectory: List[Message]) -> OrderedSet[Chunk]:
@@ -111,8 +119,7 @@ async def find_bugs(context: str, file: File, model: str) -> List[Bug]:
         "content": f"<path>{file.rel_path}</path>\n<code>\n{file.content}\n</code>\n\n--\n\nAnalyze the file above for bugs.",
     }
     response = await acompletion(
-        # model=model,
-        model="openai/o3-mini",
+        model=get_reasoning_model(model),
         messages=[system_message, user_message],
         # frequency_penalty=0.0,
         # temperature=0.75,
@@ -143,8 +150,8 @@ async def find_bugs(context: str, file: File, model: str) -> List[Bug]:
                                     },
                                     "confidence": {
                                         "type": "integer",
-                                        "description": "Confidence score between 0 and 10. 10 indicates high confidence in the bug's existence. 0 indicates low confidence.",
-                                    },  # TODO: Change to float, increase objectivity (it's always high)
+                                        "description": "Confidence score between 0 and 10. 10 indicates high confidence in the bug's existence and severity. 0 indicates low confidence (e.g. the bug might not be a problem or is low severity).",
+                                    },
                                 },
                                 "required": [
                                     "start",
@@ -162,6 +169,7 @@ async def find_bugs(context: str, file: File, model: str) -> List[Bug]:
                 },
             },
         },
+        drop_params=True,
     )
     response = response.choices[0].message.content
     response = json_repair.loads(response)
@@ -233,8 +241,6 @@ class FindBugsTool(Tool):
         self.parameters["properties"]["files"]["items"]["enum"] = files
 
     async def run(self, reason: str, files: List[str], **kwargs) -> List[Bug]:
-        self.update_progress("Generating bug report")
-
         trajectory = kwargs.get("trajectory")
         chunks = get_chunks(trajectory)
         chunks = filter_chunks(chunks, files)
