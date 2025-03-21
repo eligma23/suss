@@ -1,5 +1,5 @@
 [project]
-name = "bugnet"
+name = "suss"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "cohere>=5.14.0",
     "json-repair>=0.38.0",
-    "litellm>=1.59.12",
+    "litellm==1.61.19",
     "rich>=13.9.4",
     "saplings>=6.0.0",
     "sortedcollections>=2.1.0",

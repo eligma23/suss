@@ -7,13 +7,13 @@ from saplings.dtos import Message
 
 # Local
 try:
-    from bugnet.tools import (
+    from suss.tools import (
         CodeSearchTool,
         FileSearchTool,
         ReadFileTool,
         FindBugsTool,
     )
-    from bugnet.index import Index, File
+    from suss.index import Index, File
 except ImportError:
     from tools import CodeSearchTool, FileSearchTool, ReadFileTool, FindBugsTool
     from index import Index, File

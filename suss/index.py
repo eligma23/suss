@@ -11,7 +11,7 @@ from tree_sitter_languages import get_parser
 
 # Local
 try:
-    from bugnet.resources import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
+    from suss.resources import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
 except ImportError:
     from resources import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
 
@@ -387,5 +387,4 @@ class Index(object):
 
         return list(results)
 
-    def search_files(self, pattern: str) -> List[File]:
-        pass
+    # TODO: Should search_files be implemented here? For consistency's sake

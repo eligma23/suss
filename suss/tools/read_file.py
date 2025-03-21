@@ -10,7 +10,7 @@ from litellm import acompletion, encode, decode
 
 # Local
 try:
-    from bugnet.index import Index, File, Chunk
+    from suss.index import Index, File, Chunk
 except ImportError:
     from index import Index, File, Chunk
 
@@ -105,7 +105,7 @@ async def extract_chunks(file: File, query: str, model: str) -> List[Chunk]:
     return chunks
 
 
-def truncate_chunks(chunks: List[Chunk]) -> List[Chunk]:
+def clamp_chunks(chunks: List[Chunk]) -> List[Chunk]:
     # Ensures that line numbers in chunks are within the file's range
 
     truncated_chunks = []
@@ -240,6 +240,6 @@ class ReadFileTool(Tool):
         self.update_progress(intent)
         file = self.index.get_file(file)
         chunks = await extract_chunks(file, query, self.model)
-        chunks = truncate_chunks(chunks)
+        chunks = clamp_chunks(chunks)
         chunks = merge_chunks(chunks)
         return chunks

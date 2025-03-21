@@ -8,7 +8,7 @@ from saplings.abstract import Tool
 
 # Local
 try:
-    from bugnet.index import Index, File
+    from suss.index import Index, File
 except ImportError:
     from index import Index, File
 
