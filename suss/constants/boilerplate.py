@@ -2,7 +2,7 @@ BOILERPLATE_REGEXES = [
     # Byte-compiled / optimized / DLL files
     "(^|/)__pycache__/",
     # Distribution / packaging
-    "(^|/)(^|/)build/",
+    "(^|/)build/",
     "(^|/)dist/",
     "(^|/)develop-eggs/",
     "(^|/)downloads/",
@@ -273,7 +273,10 @@ BOILERPLATE_REGEXES = [
     "(^|/)\.github/",
     # Environments
     "(^|/)venv/",
-    "(^|/)env/" "(^|/)ENV/" "(^|/)env\.bak/" "(^|/)venv\.bak/",
+    "(^|/)env/",
+    "(^|/)ENV/",
+    "(^|/)env\.bak/",
+    "(^|/)venv\.bak/",
     # Lock Files (NPM, Yarn, PNPM, etc.)
     "(^|/)package-lock\.json",
     "(^|/)yarn\.lock",

@@ -1,7 +1,6 @@
 # Standard library
 import re
 from pathlib import Path
-from typing import List, Optional
 from collections import namedtuple
 from functools import cached_property
 
@@ -11,9 +10,9 @@ from tree_sitter_languages import get_parser
 
 # Local
 try:
-    from suss.resources import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
+    from suss.constants import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
 except ImportError:
-    from resources import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
+    from constants import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
 
 
 #########
@@ -89,7 +88,7 @@ def should_index_dir(dir: Path) -> bool:
     return not any(re.search(pattern, str(dir)) for pattern in BOILERPLATE_REGEXES)
 
 
-def enumerate_files(root_dir: Path, sub_dir: Optional[Path] = None):
+def enumerate_files(root_dir: Path, sub_dir: Path | None = None):
     sub_dir = root_dir if not sub_dir else sub_dir
 
     for item in sub_dir.iterdir():
@@ -170,7 +169,7 @@ class File(object):
         return self.extension in LANGUAGE_EXTENSIONS
 
     @cached_property
-    def language(self) -> Optional[str]:
+    def language(self) -> str | None:
         if not self.is_code_file:
             return None
 
@@ -202,7 +201,7 @@ class File(object):
         recurse_tree(tree.root_node)
 
     # Adapted from Paul Gauthier's grep-ast
-    def search(self, pattern: str) -> List[int]:
+    def search(self, pattern: str) -> list[int]:
         parent_scopes = OrderedSet()
         matches = OrderedSet()
         show_lines = OrderedSet()
@@ -323,7 +322,7 @@ class File(object):
 
 
 class Chunk(object):
-    def __init__(self, line_nums: List[int], file: File):
+    def __init__(self, line_nums: list[int], file: File):
         # Line numbers are 1-indexed and not necessarily contiguous
         self.line_nums = line_nums
         self.file = file
@@ -337,9 +336,10 @@ class Chunk(object):
         return self.to_string()
 
     @cached_property
-    def lines(self) -> List[str]:
+    def lines(self) -> list[str]:
         return [self.file.lines[i - 1] for i in self.line_nums]
 
+    # TODO: Ensure string doesn't start or end with dots
     def to_string(self, line_nums: bool = True, dots: bool = True) -> str:
         output_str = ""
 
@@ -366,13 +366,13 @@ class Index(object):
         self._files = {f.rel_path: f for f in enumerate_files(self.root_dir)}
 
     @property
-    def files(self) -> List[str]:
+    def files(self) -> list[str]:
         return list(self._files.values())
 
     def get_file(self, rel_path: str) -> File:
         return self._files[rel_path]
 
-    def search_code(self, pattern: str, exclude: Optional[File] = None) -> List[Chunk]:
+    def search_code(self, pattern: str, exclude: File | None = None) -> list[Chunk]:
         results = OrderedSet()
         for file in self._files.values():
             if exclude and file.rel_path == exclude.rel_path:
@@ -386,5 +386,3 @@ class Index(object):
             results.add(chunk)
 
         return list(results)
-
-    # TODO: Should search_files be implemented here? For consistency's sake

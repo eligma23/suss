@@ -1,6 +1,5 @@
 # Standard library
 import re
-from typing import List
 from collections import defaultdict
 
 # Third party
@@ -9,16 +8,15 @@ from saplings.abstract import Tool
 # Local
 try:
     from suss.index import Index, File
+    from suss.constants import FILE_SEARCH_LIMIT
 except ImportError:
     from index import Index, File
+    from constants import FILE_SEARCH_LIMIT
 
 
 #########
 # HELPERS
 #########
-
-
-MAX_FILES = 10
 
 
 def additions(query: str, i: int, j: int) -> str:
@@ -75,7 +73,7 @@ def one_of_each(query: str, i: int, j: int) -> str:
     return "".join(query_chars)
 
 
-def build_fuzzy_regex_filters(query: str) -> List[re.Pattern]:
+def build_fuzzy_regex_filters(query: str) -> list[re.Pattern]:
     filters = []
     query_len = len(query)
     for i in range(query_len):
@@ -93,7 +91,7 @@ def build_fuzzy_regex_filters(query: str) -> List[re.Pattern]:
     return filters
 
 
-def get_trigrams(query: str) -> List[str]:
+def get_trigrams(query: str) -> list[str]:
     query_chars = list(query)
 
     trigrams = []
@@ -113,13 +111,13 @@ def get_trigrams(query: str) -> List[str]:
 ######
 
 
-class FileSearchTool(Tool):
+class GlobFilesTool(Tool):
     def __init__(
         self, index: Index, target_file: File, update_progress: callable, **kwargs
     ):
         # Base attributes
         self.name = "search_files"
-        self.description = "Search the file paths in a codebase. Returns file paths that may not exactly match the query, but will be roughly similar."
+        self.description = "Runs a fuzzy keyword search on the file paths in the codebase. Returns file paths that may not exactly match the query, but will be roughly similar."
         self.parameters = {
             "type": "object",
             "properties": {
@@ -129,7 +127,7 @@ class FileSearchTool(Tool):
                 },
                 "query": {
                     "type": "string",
-                    "description": "A search query. Should NOT contain whitespace. E.g. 'server/src', 'main', 'dtos.py'.",
+                    "description": "A search query with NO whitespace. Should match the file paths you're looking for. E.g. 'worker/engine', 'dtos.py', 'utils/api.ts'.",
                 },
             },
             "required": ["intent", "query"],
@@ -142,11 +140,11 @@ class FileSearchTool(Tool):
         self.target_file = target_file
         self.update_progress = update_progress
 
-    def format_output(self, files: List[File]) -> str:
+    def format_output(self, files: list[File]) -> str:
         file_paths = (file.rel_path for file in files)
         return "\n".join(file_paths)
 
-    async def run(self, intent: str, query: str, **kwargs) -> List[File]:
+    async def run(self, intent: str, query: str, **kwargs) -> list[File]:
         self.update_progress(intent)
 
         query = query.lower()
@@ -178,7 +176,7 @@ class FileSearchTool(Tool):
                     matches.append(file)
                     break
 
-            if len(matches) >= MAX_FILES:
+            if len(matches) >= FILE_SEARCH_LIMIT:
                 break
 
         return matches

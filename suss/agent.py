@@ -1,58 +1,51 @@
-# Standard library
-from typing import List
-
 # Third party
-from saplings import COTAgent, Model
 from saplings.dtos import Message
+from saplings import COTAgent, Model
 
 # Local
 try:
     from suss.tools import (
-        CodeSearchTool,
-        FileSearchTool,
+        GrepCodeTool,
+        GlobFilesTool,
         ReadFileTool,
         FindBugsTool,
     )
     from suss.index import Index, File
 except ImportError:
-    from tools import CodeSearchTool, FileSearchTool, ReadFileTool, FindBugsTool
     from index import Index, File
+    from tools import GrepCodeTool, GlobFilesTool, ReadFileTool, FindBugsTool
+
 
 #########
 # HELPERS
 #########
 
 
-# TODO: Improve prompt
-SYSTEM_PROMPT = """<assistant>
-You will be given a file from a codebase.
-Your job is to call functions to find information about the codebase that will help you analyze the file for bugs.
-Call functions.done when you have enough context on the surrounding codebase to analyze the file.
-</assistant>
+SYSTEM_PROMPT = """<instructions>
+Your job is to choose the best action. Call functions to find information about the \
+codebase that will help you answer the user's query. Call functions.done when you \
+have enough context to answer the user's query.
+</instructions>
 
 <rules>
 - DO NOT call a function that you've used before with the same arguments.
-- DO NOT assume the structure of the codebase the given file belongs to, or the existence of other files or folders.
-- Your queries to functions.search_code and functions.search_files should be significantly different to previous queries.
-- Call functions.done with files that you are confident will help you analyze the given file for bugs.
-- If the output of a function is empty, try calling the function again with DIFFERENT arguments OR try calling a different function.
-- Use functions.search_code, functions.search_files, and functions.read_file to gather context on the codebase the file belongs to.
-</rules>
-
-<important>
-Some files can be scanned for bugs without any additional context from the codebase. 
-But if a file depends on (or affects) many other constructs in the codebase, you may need to call functions to gather that context.
-</important>"""
+- DO NOT assume the structure of the codebase or the existence of other files \
+or folders.
+- Your queries to functions.search_code and functions.search_files should be \
+significantly different than previous queries.
+- If the output of a function is empty, try calling the function again with \
+DIFFERENT arguments OR try calling a different function.
+</rules>"""
 
 
 def build_prompt(file: File) -> str:
     prompt = f"<path>{file.path}</path>\n"
     prompt += f"<code>\n{file.content}\n</code>\n\n"
-    prompt += "--\n\nAnalyze the file above for bugs."
+    prompt += "--\n\nAbove is a file from the codebase. Analyze it for bugs. Consider bugs that are isolated to the file, and bugs it may cause in other files (i.e. afferent or efferent dependencies)."
     return prompt
 
 
-def was_tool_called(messages: List[Message], tool_name: str) -> bool:
+def was_tool_called(messages: list[Message], tool_name: str) -> bool:
     for message in messages:
         if message.role != "assistant":
             continue
@@ -79,9 +72,11 @@ class Agent:
         self.max_iters = max_iters
 
     async def run(self, file: File, update_progress: callable):
+        # TODO: Add pseudo-semantic search tool
+        # TODO: Add call graph tools (ref/def search)
         tools = [
-            CodeSearchTool(self.index, file, update_progress),
-            FileSearchTool(self.index, file, update_progress),
+            GrepCodeTool(self.index, file, update_progress),
+            GlobFilesTool(self.index, file, update_progress),
             ReadFileTool(self.index, self.model, file, update_progress),
             FindBugsTool(self.model, file, update_progress),
         ]

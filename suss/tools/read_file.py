@@ -1,5 +1,4 @@
 # Standard library
-from typing import List
 from collections import defaultdict
 
 # Third party
@@ -11,16 +10,16 @@ from litellm import acompletion, encode, decode
 # Local
 try:
     from suss.index import Index, File, Chunk
+    from suss.constants import MAX_MERGE_DISTANCE, MAX_CONTEXT_TOKENS
 except ImportError:
     from index import Index, File, Chunk
+    from constants import MAX_MERGE_DISTANCE, MAX_CONTEXT_TOKENS
 
 
 #########
 # HELPERS
 #########
 
-
-MAX_CHUNK_DISTANCE = 5
 
 PROMPT = """I want to find all the code in a file that's relevant to a query.
 
@@ -30,26 +29,26 @@ Line ranges should be inclusive (e.g. {{"start": 12, "end": 15}} includes lines 
 
 --
 
-Here is the file ({file_path}):
+Here is the code in the file ({file_path}):
 
 <code>
 {file_content}
 </code>
 
-And here is the query:
+And here is the query to find relevant code for:
 
 <query>
 {query}
 </query>"""
 
 
-def truncate_file_content(file: File, max_tokens: int = 40000) -> str:
-    tokens = encode(model="", text=file.content)[:max_tokens]
+def truncate_file_content(file: File) -> str:
+    tokens = encode(model="", text=file.content)[:MAX_CONTEXT_TOKENS]
     file_str = decode(model="", tokens=tokens)
     return file_str
 
 
-async def extract_chunks(file: File, query: str, model: str) -> List[Chunk]:
+async def extract_chunks(file: File, query: str, model: str) -> list[Chunk]:
     file_path = file.rel_path
     file_content = truncate_file_content(file)
     messages = [
@@ -105,21 +104,21 @@ async def extract_chunks(file: File, query: str, model: str) -> List[Chunk]:
     return chunks
 
 
-def clamp_chunks(chunks: List[Chunk]) -> List[Chunk]:
+def clamp_chunks(chunks: list[Chunk]) -> list[Chunk]:
     # Ensures that line numbers in chunks are within the file's range
 
-    truncated_chunks = []
+    clamped_chunks = []
     for chunk in chunks:
         chunk.line_nums = [ln for ln in chunk.line_nums if ln <= chunk.file.last_lineno]
         if not chunk.line_nums:
             continue
 
-        truncated_chunks.append(chunk)
+        clamped_chunks.append(chunk)
 
-    return truncated_chunks
+    return clamped_chunks
 
 
-def merge_chunks(chunks: List[Chunk]) -> List[Chunk]:
+def merge_chunks(chunks: list[Chunk]) -> list[Chunk]:
     merged_chunks = []
     if not chunks:
         return merged_chunks
@@ -131,7 +130,7 @@ def merge_chunks(chunks: List[Chunk]) -> List[Chunk]:
         next_start, next_end = next_chunk.line_nums[0], next_chunk.line_nums[-1]
 
         is_overlapping = curr_end >= next_start
-        is_within_distance = next_start - curr_end < MAX_CHUNK_DISTANCE
+        is_within_distance = next_start - curr_end < MAX_MERGE_DISTANCE
         if is_overlapping or is_within_distance:
             curr_chunk.line_nums = list(range(curr_start, next_end + 1))
         else:
@@ -160,13 +159,13 @@ class ReadFileTool(Tool):
     ):
         # Base attributes
         self.name = "read_file"
-        self.description = "Read a file in the codebase. Returns the most relevant subsets of the file."
+        self.description = "Read (search within) a file in the codebase. Returns the most relevant parts of the file."
         self.parameters = {
             "type": "object",
             "properties": {
                 "intent": {
                     "type": "string",
-                    "description": "Concise, one-sentence description of your intent behind reading the file.",  # TODO: Examples
+                    "description": "Concise, one-sentence description of your intent behind reading the file. E.g. 'Find the definition of handle_auth', 'Look for helper functions for the parser', etc.",
                 },
                 "file": {
                     "type": "string",
@@ -189,7 +188,7 @@ class ReadFileTool(Tool):
         self.target_file = target_file
         self.update_progress = update_progress
 
-    def format_output(self, chunks: List[Chunk]) -> str:
+    def format_output(self, chunks: list[Chunk]) -> str:
         grouped_chunks = defaultdict(list)
         for chunk in chunks:
             grouped_chunks[chunk.file].append(chunk)
@@ -203,7 +202,7 @@ class ReadFileTool(Tool):
         formatted_chunks = "\n\n".join(formatted_chunks)
         return formatted_chunks
 
-    def update_definition(self, trajectory: List[Message] = [], **kwargs):
+    def update_definition(self, trajectory: list[Message] = [], **kwargs):
         files = set()
         for message in trajectory:
             if not message.raw_output:
@@ -218,7 +217,7 @@ class ReadFileTool(Tool):
         files = [file for file in files if file != self.target_file.rel_path]
         self.parameters["properties"]["file"]["enum"] = files
 
-    def is_active(self, trajectory: List[Message] = [], **kwargs) -> bool:
+    def is_active(self, trajectory: list[Message] = [], **kwargs) -> bool:
         if not trajectory:
             return False
 
@@ -236,10 +235,14 @@ class ReadFileTool(Tool):
 
         return False
 
-    async def run(self, intent: str, file: str, query: str, **kwargs) -> List[Chunk]:
+    async def run(self, intent: str, file: str, query: str, **kwargs) -> list[Chunk]:
         self.update_progress(intent)
         file = self.index.get_file(file)
         chunks = await extract_chunks(file, query, self.model)
         chunks = clamp_chunks(chunks)
         chunks = merge_chunks(chunks)
         return chunks
+
+
+# TODO: Allow for multiple files
+# TODO: Alternative approach: chunk up each file, embed the chunks, then do vector search
