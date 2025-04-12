@@ -195,51 +195,56 @@ def print_bug_report(files: list[File], bug_sets: list[object], padding: int = 3
 ######
 
 
-async def main():
-    config = get_config()
-    index = Index(config.root_dir)
-    agent = Agent(index, config.model, config.max_iters)
-    files_to_analyze = get_changed_files(index)
+def main():
+    async def async_main():
+        config = get_config()
+        index = Index(config.root_dir)
+        agent = Agent(index, config.model, config.max_iters)
+        files_to_analyze = get_changed_files(index)
 
-    if not files_to_analyze:
-        print("No changes detected")  # TODO: Improve
-        return
+        if not files_to_analyze:
+            print("No changes detected")  # TODO: Improve
+            return
 
-    console = Console()
+        console = Console()
 
-    console.print("[bold]Analyzing files...[/bold]")
-    console.print("")
+        console.print("[bold]Analyzing files...[/bold]")
+        console.print("")
 
-    # log_panel = Panel("")
-    log_panel = Text("")
-    file_logs = []
+        # log_panel = Panel("")
+        log_panel = Text("")
+        file_logs = []
 
-    progress = Progress(
-        TextColumn("[progress.description]{task.description}", justify="left"),
-        BarColumn(bar_width=None),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),  # , padding=0),
-        console=console,
-        expand=True,
-    )
+        progress = Progress(
+            TextColumn("[progress.description]{task.description}", justify="left"),
+            BarColumn(bar_width=None),
+            TextColumn(
+                "[progress.percentage]{task.percentage:>3.0f}%"
+            ),  # , padding=0),
+            console=console,
+            expand=True,
+        )
 
-    display_group = Group(progress, Text(""), Rule(style="cyan"), log_panel)
+        display_group = Group(progress, Text(""), Rule(style="cyan"), log_panel)
 
-    with Live(display_group, refresh_per_second=10, transient=False) as live:
+        with Live(display_group, refresh_per_second=10, transient=False) as live:
 
-        def update_log_panel(message: str, file_path: str):
-            nonlocal file_logs
-            file_logs.append(f"[cyan]{file_path}:[/cyan] {message}")
-            if len(file_logs) > 5:
-                file_logs.pop(0)
-            # log_panel.renderable = "\n".join(file_logs)
-            display_group.renderables[-1] = Text.from_markup("\n".join(file_logs))
+            def update_log_panel(message: str, file_path: str):
+                nonlocal file_logs
+                file_logs.append(f"[cyan]{file_path}:[/cyan] {message}")
+                if len(file_logs) > 5:
+                    file_logs.pop(0)
+                # log_panel.renderable = "\n".join(file_logs)
+                display_group.renderables[-1] = Text.from_markup("\n".join(file_logs))
 
-        tasks = []
-        for file in files_to_analyze:
-            task = run_agent(agent, file, progress, update_log_panel)
-            tasks.append(task)
+            tasks = []
+            for file in files_to_analyze:
+                task = run_agent(agent, file, progress, update_log_panel)
+                tasks.append(task)
 
-        bug_sets = await asyncio.gather(*tasks)
+            bug_sets = await asyncio.gather(*tasks)
 
-    console.clear()
-    print_bug_report(files_to_analyze, bug_sets)
+        console.clear()
+        print_bug_report(files_to_analyze, bug_sets)
+
+    asyncio.run(async_main())
