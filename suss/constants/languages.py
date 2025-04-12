@@ -1,4 +1,4 @@
-LANGUAGE_EXTENSIONS = {
+SUPPORTED_LANGUAGES = {
     ".py": "python",
     ".js": "javascript",
     ".mjs": "javascript",  # mjs file extension stands for "module JavaScript."

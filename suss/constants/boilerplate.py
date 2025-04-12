@@ -1,4 +1,4 @@
-BOILERPLATE_REGEXES = [
+PATH_EXCLUSIONS = [
     # Byte-compiled / optimized / DLL files
     "(^|/)__pycache__/",
     # Distribution / packaging

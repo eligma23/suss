@@ -1,6 +1,6 @@
 try:
-    from suss.constants.languages import LANGUAGE_EXTENSIONS
-    from suss.constants.boilerplate import BOILERPLATE_REGEXES
+    from suss.constants.languages import SUPPORTED_LANGUAGES
+    from suss.constants.boilerplate import PATH_EXCLUSIONS
     from suss.constants.agent import (
         MAX_MERGE_DISTANCE,
         CODE_SEARCH_LIMIT,
@@ -10,8 +10,8 @@ try:
         MAX_THINKING_TOKENS,
     )
 except ImportError:
-    from constants.languages import LANGUAGE_EXTENSIONS
-    from constants.boilerplate import BOILERPLATE_REGEXES
+    from constants.languages import SUPPORTED_LANGUAGES
+    from constants.boilerplate import PATH_EXCLUSIONS
     from constants.agent import (
         MAX_MERGE_DISTANCE,
         CODE_SEARCH_LIMIT,

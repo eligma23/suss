@@ -10,9 +10,9 @@ from tree_sitter_languages import get_parser
 
 # Local
 try:
-    from suss.constants import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
+    from suss.constants import PATH_EXCLUSIONS, SUPPORTED_LANGUAGES
 except ImportError:
-    from constants import BOILERPLATE_REGEXES, LANGUAGE_EXTENSIONS
+    from constants import PATH_EXCLUSIONS, SUPPORTED_LANGUAGES
 
 
 #########
@@ -85,7 +85,7 @@ def should_index_file(file: Path) -> bool:
 
 def should_index_dir(dir: Path) -> bool:
     # TODO: Use .gitignore
-    return not any(re.search(pattern, str(dir)) for pattern in BOILERPLATE_REGEXES)
+    return not any(re.search(pattern, str(dir)) for pattern in PATH_EXCLUSIONS)
 
 
 def enumerate_files(root_dir: Path, sub_dir: Path | None = None):
@@ -166,18 +166,18 @@ class File(object):
 
     @cached_property
     def is_code_file(self) -> bool:
-        return self.extension in LANGUAGE_EXTENSIONS
+        return self.extension in SUPPORTED_LANGUAGES
 
     @cached_property
     def language(self) -> str | None:
         if not self.is_code_file:
             return None
 
-        return LANGUAGE_EXTENSIONS[self.extension]
+        return SUPPORTED_LANGUAGES[self.extension]
 
     @cached_property
     def is_boilerplate(self) -> bool:
-        return any(re.search(pattern, self.rel_path) for pattern in BOILERPLATE_REGEXES)
+        return any(re.search(pattern, self.rel_path) for pattern in PATH_EXCLUSIONS)
 
     def index_ast(self):
         if not self.is_code_file:
