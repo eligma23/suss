@@ -34,7 +34,3 @@ To run `suss` on a specific file:
 ```bash
 > suss --file="path/to/file.py"
 ```
-
-You can also set up a pre-commit hook to automatically run `suss` before you push a commit.
-
-TODO: Explain how to make a pre-commit hook.
