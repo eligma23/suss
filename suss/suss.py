@@ -91,8 +91,11 @@ def get_config() -> Config | None:
     )
 
 
-def get_changed_files(index: Index) -> list[File]:
+def get_changed_files(index: Index, config: Config) -> list[File]:
     try:
+        if config.file:
+            return [f for f in index.files if f.rel_path.lower() == config.file.lower()]
+
         status_output = subprocess.check_output(
             ["git", "status", "--porcelain"], text=True
         ).splitlines()
@@ -197,30 +200,30 @@ def print_bug_report(files: list[File], bug_sets: list[object], padding: int = 3
 
 def main():
     async def async_main():
+        console = Console()
         config = get_config()
         index = Index(config.root_dir)
         agent = Agent(index, config.model, config.max_iters)
-        files_to_analyze = get_changed_files(index)
+        files_to_analyze = get_changed_files(index, config)
 
         if not files_to_analyze:
-            print("No changes detected")  # TODO: Improve
-            return
+            if not config.file:
+                console.print("No code changes detected. Aborting analysis.")
+            else:
+                console.print(f"No such file: {config.file}. Aborting analysis.")
 
-        console = Console()
+            return
 
         console.print("[bold]Analyzing files...[/bold]")
         console.print("")
 
-        # log_panel = Panel("")
         log_panel = Text("")
         file_logs = []
 
         progress = Progress(
             TextColumn("[progress.description]{task.description}", justify="left"),
             BarColumn(bar_width=None),
-            TextColumn(
-                "[progress.percentage]{task.percentage:>3.0f}%"
-            ),  # , padding=0),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
             console=console,
             expand=True,
         )
@@ -234,7 +237,6 @@ def main():
                 file_logs.append(f"[cyan]{file_path}:[/cyan] {message}")
                 if len(file_logs) > 5:
                     file_logs.pop(0)
-                # log_panel.renderable = "\n".join(file_logs)
                 display_group.renderables[-1] = Text.from_markup("\n".join(file_logs))
 
             tasks = []
