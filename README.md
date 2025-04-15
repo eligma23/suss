@@ -6,7 +6,9 @@ Suss looks for bugs in your local code changes, i.e. the diff between your local
 
 ![Demo](demo.gif)
 
-For each code change, an AI agent gathers context on how it interacts with the rest of the codebase. Then the agent audits the change and its downstream effects on other code. Think of suss as a quick and easy sanity check before pushing your code.
+For each code change, an AI agent gathers context on how it interacts with the rest of the codebase. Then the agent audits the change and its downstream effects on other code.
+
+Think of suss as a quick and easy sanity check before pushing your code.
 
 ## Installation
 
