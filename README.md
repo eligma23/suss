@@ -25,7 +25,7 @@ Once installed, you must choose an LLM provider. To use OpenAI or Anthropic, jus
 
 You can also use other models, including local ones. `suss` wraps LiteLLM, so you can use any model listed [here.](https://docs.litellm.ai/docs/providers)
 
-**Optional:** You can boost performance using the Cohere reranker model. Just add your Cohere API key to your environment:
+**Optional:** You can boost performance using the [Cohere reranker model.](https://cohere.com/rerank) Just add your Cohere API key to your environment:
 
 ```bash
 > export COHERE_API_KEY="..."
