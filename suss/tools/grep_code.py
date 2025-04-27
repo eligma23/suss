@@ -7,7 +7,7 @@ from collections import defaultdict
 # Third party
 import cohere
 from saplings.abstract import Tool
-from tree_sitter_languages import get_parser
+from tree_sitter_language_pack import get_parser
 
 # Local
 try:

@@ -6,7 +6,7 @@ from functools import cached_property
 
 # Third party
 from sortedcollections import OrderedSet
-from tree_sitter_languages import get_parser
+from tree_sitter_language_pack import get_parser
 
 # Local
 try:
