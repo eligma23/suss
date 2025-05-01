@@ -2,7 +2,7 @@
 
 **Find bugs with a codebase-aware AI agent.**
 
-Suss looks for bugs in your local code changes, i.e. the diff between your local and remote branch. Just run `suss` in your terminal to get a bug report in under a minute.
+Suss looks for bugs in your local code changes. Just run `suss` in your terminal to get a bug report in under a minute.
 
 ![Demo](demo.gif)
 
