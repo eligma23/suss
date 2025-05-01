@@ -6,9 +6,9 @@ Suss looks for bugs in your local code changes. Just run `suss` in your terminal
 
 ![Demo](demo.gif)
 
-For each code change, an AI agent gathers context on how it interacts with the rest of the codebase. Then the agent audits the change and its downstream effects on other code.
+This works by analyzing the diff between your local and remote branch. For each code change, an agent explores your codebase to gather context on the change (e.g. dependencies, code paths, etc.). Then a reasoning model uses that context to evaluate the change and identify potential bugs.
 
-Think of suss as a quick and easy sanity check before pushing your code.
+You'll be surprised with how many bugs this can catch — even complex, multi-file bugs. Think of `suss` as a quick and dirty code review before pushing your code. 
 
 ## Installation
 
