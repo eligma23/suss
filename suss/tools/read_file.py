@@ -59,54 +59,90 @@ async def extract_chunks(file: File, query: str, model: str) -> list[Chunk]:
             ),
         },
     ]
-    response = await acompletion(
-        model=model,
-        messages=messages,
-        response_format={
-            "type": "json_schema",
-            "json_schema": {
-                "name": "find_code_response",
-                "strict": True,
-                "schema": {
+    
+    is_deepseek = model.startswith("deepseek/")
+    
+    response_format_val = {
+        "type": "json_object"  # 所有模型都使用基本的 JSON 对象格式
+    }
+    
+    if is_deepseek:
+        response_format_val["properties"] = {
+            "bugs": {
+                "type": "array",
+                "items": {
                     "type": "object",
                     "properties": {
-                        "line_ranges": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "start": {
-                                        "type": "integer",
-                                        "description": "Starting line number (inclusive).",
-                                    },
-                                    "end": {
-                                        "type": "integer",
-                                        "description": "Ending line number (inclusive).",
-                                    },
-                                },
-                                "required": ["start", "end"],
-                                "additionalProperties": False,
-                            },
-                            "description": "List of line ranges that contain relevant code.",
-                        },
+                        "start": {"type": "integer"},
+                        "end": {"type": "integer"},
+                        "description": {"type": "string"},
+                        "confidence": {"type": "integer"}
                     },
-                    "required": ["line_ranges"],
-                    "additionalProperties": False,
-                },
-            },
-        },
-        drop_params=True,
-    )
-    response = json_repair.loads(response.choices[0].message.content)
-    line_ranges = [lr for lr in response["line_ranges"] if lr["start"] <= lr["end"]]
-    line_ranges = [list(range(lr["start"], lr["end"] + 1)) for lr in line_ranges]
-    chunks = [Chunk(line_nums, file) for line_nums in line_ranges]
+                    "required": ["start", "end", "description", "confidence"]
+                }
+            }
+        }
+        response_format_val["required"] = ["bugs"]
+    
+    else:
+        response_format_val["properties"] = {
+            "line_ranges": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "start": {"type": "integer"},
+                        "end": {"type": "integer"}
+                    },
+                    "required": ["start", "end"]
+                }
+            }
+        }
+        response_format_val["required"] = ["line_ranges"]
+    
+    try:
+        response = await acompletion(
+            model=model,
+            messages=messages,
+            response_format=response_format_val,
+            drop_params=True,
+        )
+        response_content = response.choices[0].message.content
+    except Exception as e:
+        print(f"API call failed: {str(e)}")
+        return []
+
+    try:
+        response_json = json_repair.loads(response_content)
+    except Exception as e:
+        print(f"JSON parsing failed: {str(e)}")
+        return [] 
+
+    if is_deepseek:
+        bugs = response_json.get("bugs", [])
+        line_ranges = [{"start": bug["start"], "end": bug["end"]} for bug in bugs]
+    else:
+        line_ranges = response_json.get("line_ranges", [])
+    
+    valid_line_ranges = []
+    for lr in line_ranges:
+        if "start" in lr and "end" in lr and lr["start"] <= lr["end"]:
+            valid_line_ranges.append(lr)
+    
+    line_nums_list = []
+    for lr in valid_line_ranges:
+        try:
+            line_nums = list(range(lr["start"], lr["end"] + 1))
+            line_nums_list.append(line_nums)
+        except Exception:
+            continue
+    
+    chunks = [Chunk(line_nums, file) for line_nums in line_nums_list]
     return chunks
 
 
 def clamp_chunks(chunks: list[Chunk]) -> list[Chunk]:
     # Ensures that line numbers in chunks are within the file's range
-
     clamped_chunks = []
     for chunk in chunks:
         chunk.line_nums = [ln for ln in chunk.line_nums if ln <= chunk.file.last_lineno]

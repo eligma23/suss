@@ -1,4 +1,5 @@
 # Standard library
+import os
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -63,6 +64,8 @@ def get_reasoning_model(model: str) -> str:
         return "openai/o3-mini"
     elif model.startswith("anthropic/"):
         return "anthropic/claude-3-7-sonnet-20250219"
+    elif model.startswith("deepseek/"):
+        return "deepseek/deepseek-coder"
 
     return model
 
@@ -185,6 +188,11 @@ def build_context_str(chunks: list[Chunk]) -> str:
 
 
 async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
+    # 添加 API 密钥检查
+    if model.startswith("deepseek/") and not os.getenv("DEEPSEEK_API_KEY"):
+        raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable.")
+    
+
     system_message = {
         "role": "system",
         "content": SYSTEM_PROMPT.format(context=context),
@@ -193,12 +201,54 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
         "role": "user",
         "content": f"<path>{file.rel_path}</path>\n<code>\n{file.content}\n</code>\n\n--\n\nAnalyze the file above for bugs.",
     }
-    response = await acompletion(
-        model=get_reasoning_model(model),
-        messages=[system_message, user_message],
-        # frequency_penalty=0.0,
-        # temperature=0.75,
-        response_format={
+    
+    model = get_reasoning_model(model)
+    is_deepseek = model.startswith("deepseek/")
+    
+    request_params = {
+        "model": model,
+        "messages": [system_message, user_message],
+        "thinking": {"type": "enabled", "budget_tokens": MAX_THINKING_TOKENS},
+        "drop_params": True,
+        #"temperature": 0.2,
+        #"max_tokens": 2000
+    }
+    
+    if is_deepseek:
+        request_params["response_format"] = {
+            "type": "object",
+            "properties": {
+                "bugs": {
+                    "type": "array",
+                    "description": "List of bugs found in the code file. Can be empty if no bugs exist.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "start": {
+                                "type": "integer",
+                                "description": "The starting line number of the buggy code block (inclusive)."
+                            },
+                            "end": {
+                                "type": "integer",
+                                "description": "The ending line number of the buggy code block (inclusive)."
+                            },
+                            "description": {
+                                "type": "string",
+                                "description": "Concise description of the bug and its impact (1-3 sentences max)."
+                            },
+                            "confidence": {
+                                "type": "integer",
+                                "description": "Confidence score (0-100) in the bug's existence and severity."
+                            }
+                        },
+                        "required": ["start", "end", "description", "confidence"]
+                    }
+                }
+            },
+            "required": ["bugs"]
+        }
+    else:
+        request_params["response_format"] = {
             "type": "json_schema",
             "json_schema": {
                 "name": "bug_report",
@@ -243,13 +293,12 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
                     "additionalProperties": False,
                 },
             },
-        },
-        thinking={"type": "enabled", "budget_tokens": MAX_THINKING_TOKENS},
-        drop_params=True,
-    )
+        }
+    
+    response = await acompletion(**request_params)
     response = response.choices[0].message.content
     response = json_repair.loads(response)
-
+    
     bugs = []
     for bug in response["bugs"]:
         start = max(1, bug["start"])
@@ -259,7 +308,6 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
         bugs.append(Bug(start, end, bug["description"], conf_score))
 
     return bugs
-
 
 ######
 # MAIN

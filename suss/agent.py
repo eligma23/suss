@@ -1,3 +1,8 @@
+# Standard library
+import os
+import asyncio
+import litellm
+
 # Third party
 from saplings.dtos import Message
 from saplings import COTAgent, Model
@@ -70,6 +75,7 @@ class Agent:
         self.index = index
         self.model = model
         self.max_iters = max_iters
+        self.use_deepseek = model.startswith("deepseek/")
 
     async def run(self, file: File, update_progress: callable):
         # TODO: Add pseudo-semantic search tool
@@ -80,6 +86,12 @@ class Agent:
             ReadFileTool(self.index, self.model, file, update_progress),
             FindBugsTool(self.model, file, update_progress),
         ]
+
+        model_kwargs = {}
+        if self.use_deepseek:
+            model_kwargs["api_key"] = os.getenv("DEEPSEEK_API_KEY")
+        model_obj = Model(self.model, **model_kwargs)
+    
         model = Model(self.model)
         agent = COTAgent(
             tools,
