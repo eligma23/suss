@@ -27,6 +27,25 @@ Your output should be a list of line ranges. Each line range should correspond t
 
 Line ranges should be inclusive (e.g. {{"start": 12, "end": 15}} includes lines 12, 13, 14, and 15).
 
+## Output Format Requirements
+You MUST output a JSON object with EXACTLY the following structure:
+{{
+  "bugs": [
+    {{
+      "start": <starting-line-number>,
+      "end": <ending-line-number>,
+      "description": "<bug-description>",
+      "confidence": <confidence-score-0-100>
+    }}
+    // ... more bugs if present
+  ]
+}}
+
+## Additional Rules
+- Use integer values for start/end lines
+- Confidence must be between 0 and 100
+- If no bugs found, return {{ "bugs": [] }}
+
 --
 
 Here is the code in the file ({file_path}):
@@ -59,12 +78,13 @@ async def extract_chunks(file: File, query: str, model: str) -> list[Chunk]:
             ),
         },
     ]
+    is_deepseek = model.startswith("deepseek/")
     response = await acompletion(
         model=model,
         messages=messages,
         response_format={
-            "type": "json_schema",
-            "json_schema": {
+            "type": "json_object" if is_deepseek else "json_schema",
+            "json_schema": None if is_deepseek else {
                 "name": "find_code_response",
                 "strict": True,
                 "schema": {

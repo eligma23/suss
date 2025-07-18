@@ -52,6 +52,25 @@ The code file you're analyzing is part of a codebase. Below is additional contex
 codebase that may help you understand the code file. Use it to help you identify bugs, if \
 necessary.
 
+## Output Format Requirements
+You MUST output a JSON object with EXACTLY the following structure:
+{{
+  "bugs": [
+    {{
+      "start": <starting-line-number>,
+      "end": <ending-line-number>,
+      "description": "<bug-description>",
+      "confidence": <confidence-score-0-100>
+    }}
+    // ... more bugs if present
+  ]
+}}
+
+## Additional Rules
+- Use integer values for start/end lines
+- Confidence must be between 0 and 100
+- If no bugs found, return {{ "bugs": [] }}
+
 <context>
 {context}
 </context>"""
@@ -63,6 +82,8 @@ def get_reasoning_model(model: str) -> str:
         return "openai/o3-mini"
     elif model.startswith("anthropic/"):
         return "anthropic/claude-3-7-sonnet-20250219"
+    elif model.startswith("deepseek/"):
+        return "deepseek/deepseek-coder"
 
     return model
 
@@ -193,14 +214,13 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
         "role": "user",
         "content": f"<path>{file.rel_path}</path>\n<code>\n{file.content}\n</code>\n\n--\n\nAnalyze the file above for bugs.",
     }
+    is_deepseek = model.startswith("deepseek/")
     response = await acompletion(
         model=get_reasoning_model(model),
         messages=[system_message, user_message],
-        # frequency_penalty=0.0,
-        # temperature=0.75,
         response_format={
-            "type": "json_schema",
-            "json_schema": {
+            "type": "json_object" if is_deepseek else "json_schema",
+            "json_schema": None if is_deepseek else {
                 "name": "bug_report",
                 "strict": True,
                 "schema": {
@@ -211,32 +231,14 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "start": {
-                                        "type": "integer",
-                                        "description": "Starting line number (inclusive) for the buggy code block.",
-                                    },
-                                    "end": {
-                                        "type": "integer",
-                                        "description": "Ending line number (inclusive) for the buggy code block.",
-                                    },
-                                    "description": {
-                                        "type": "string",
-                                        "description": "Concise description of the bug and its impact. No more than a few short sentences.",
-                                    },
-                                    "confidence": {
-                                        "type": "integer",
-                                        "description": "Confidence score between 0 and 100. 100 indicates high confidence in the bug's existence and severity (i.e. it definitely exists and is severe). 0 indicates low confidence (i.e. bug doesn't exist or is very low severity).",
-                                    },
+                                    "start": {"type": "integer"},
+                                    "end": {"type": "integer"},
+                                    "description": {"type": "string"},
+                                    "confidence": {"type": "integer"},
                                 },
-                                "required": [
-                                    "start",
-                                    "end",
-                                    "description",
-                                    "confidence",
-                                ],
+                                "required": ["start", "end", "description", "confidence"],
                                 "additionalProperties": False,
                             },
-                            "description": "List of bugs in the code file. This list can be empty if there are no bugs in the file.",
                         },
                     },
                     "required": ["bugs"],
@@ -247,6 +249,7 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
         thinking={"type": "enabled", "budget_tokens": MAX_THINKING_TOKENS},
         drop_params=True,
     )
+
     response = response.choices[0].message.content
     response = json_repair.loads(response)
 

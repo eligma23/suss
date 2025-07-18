@@ -3,6 +3,10 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # Standard library
+import os
+import sys
+import httpx
+import litellm
 import asyncio
 import argparse
 import subprocess
@@ -40,7 +44,7 @@ class Config:
     file: str | None = None  # Specific file to scan for bugs
     root_dir: str | None = None
     max_iters: int = MAX_TOOL_CALLS
-    model: str = "openai/gpt-4o"
+    model: str = "deepseek/deepseek-coder"
 
 
 def clean_root_dir(root_dir: str | None = None) -> Path:
@@ -78,7 +82,7 @@ def get_config() -> Config | None:
     parser.add_argument(
         "--model",
         type=str,
-        default="openai/gpt-4o",
+        default="deepseek/deepseek-coder",
         help="The LLM model to use.",
     )
     args = parser.parse_args()
@@ -130,7 +134,11 @@ async def run_agent(agent: Agent, file: File, progress: Progress, update_log_pan
         progress.update(task_id, message=message)
         update_log_panel(message, file.rel_path)
 
-    output = await agent.run(file, update_progress=update_progress)
+    try:
+        output = await agent.run(file, update_progress=update_progress)
+    except Exception as e:
+        output = []
+        update_log_panel(f"Agent error: {str(e)}", file.rel_path)
     progress.update(task_id, completed=agent.max_iters + 1)
     return output
 
@@ -201,50 +209,135 @@ def print_bug_report(files: list[File], bug_sets: list[object], padding: int = 3
 def main():
     async def async_main():
         console = Console()
-        config = get_config()
-        index = Index(config.root_dir)
-        agent = Agent(index, config.model, config.max_iters)
-        files_to_analyze = get_changed_files(index, config)
-
-        if not files_to_analyze:
-            if not config.file:
-                console.print("No code changes detected. Aborting analysis.")
+        try:
+            config = get_config()
+            if config.model.startswith("deepseek/"):
+                if not os.getenv("DEEPSEEK_API_KEY"):
+                    raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable.")
+                console.print(f"[bold green]Using DeepSeek model:[/bold green] {config.model}")
+            elif config.model.startswith("openai/"):
+                if not os.getenv("OPENAI_API_KEY"):
+                    raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY environment variable.")
+                console.print(f"[bold green]Using OpenAI model:[/bold green] {config.model}")
+            elif config.model.startswith("anthropic/"):
+                if not os.getenv("ANTHROPIC_API_KEY"):
+                    raise ValueError("Anthropic API key is required. Set ANTHROPIC_API_KEY environment variable.")
+                console.print(f"[bold green]Using Anthropic model:[/bold green] {config.model}")
             else:
-                console.print(f"No such file: {config.file}. Aborting analysis.")
+                console.print(f"[bold yellow]Using model:[/bold yellow] {config.model}")
+                console.print("[yellow]Make sure the required API key is set for this model[/yellow]")
 
-            return
+            index = Index(config.root_dir)
+            agent = Agent(index, config.model, config.max_iters)
+            files_to_analyze = get_changed_files(index, config)
 
-        console.print("[bold]Analyzing files...[/bold]")
-        console.print("")
+            if not files_to_analyze:
+                if not config.file:
+                    console.print("No code changes detected. Aborting analysis.")
+                else:
+                    console.print(f"No such file: {config.file}. Aborting analysis.")
 
-        log_panel = Text("")
-        file_logs = []
+                return
 
-        progress = Progress(
-            TextColumn("[progress.description]{task.description}", justify="left"),
-            BarColumn(bar_width=None),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            console=console,
-            expand=True,
-        )
+            console.print("[bold]Analyzing files...[/bold]")
+            console.print("")
 
-        display_group = Group(progress, Text(""), Rule(style="cyan"), log_panel)
+            log_panel = Text("")
+            file_logs = []
 
-        with Live(display_group, refresh_per_second=10, transient=False) as live:
+            progress = Progress(
+                TextColumn("[progress.description]{task.description}", justify="left"),
+                BarColumn(bar_width=None),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                console=console,
+                expand=True,
+            )
 
-            def update_log_panel(message: str, file_path: str):
-                nonlocal file_logs
-                file_logs.append(f"[cyan]{file_path}:[/cyan] {message}")
-                if len(file_logs) > 5:
-                    file_logs.pop(0)
-                display_group.renderables[-1] = Text.from_markup("\n".join(file_logs))
+            display_group = Group(progress, Text(""), Rule(style="cyan"), log_panel)
 
-            tasks = []
-            for file in files_to_analyze:
-                task = run_agent(agent, file, progress, update_log_panel)
-                tasks.append(task)
+            with Live(display_group, refresh_per_second=10, transient=False) as live:
 
-            bug_sets = await asyncio.gather(*tasks)
+                def update_log_panel(message: str, file_path: str):
+                    nonlocal file_logs
+                    file_logs.append(f"[cyan]{file_path}:[/cyan] {message}")
+                    if len(file_logs) > 5:
+                        file_logs.pop(0)
+                    display_group.renderables[-1] = Text.from_markup("\n".join(file_logs))
+
+                tasks = []
+                for file in files_to_analyze:
+                    task = run_agent(agent, file, progress, update_log_panel)
+                    tasks.append(task)
+
+                bug_sets = await asyncio.gather(*tasks)
+
+        except ValueError as ve:
+            console.print(f"[bold red]Configuration Error:[/bold red] {str(ve)}")
+            console.print("Please set the required environment variable:")
+            if "DeepSeek" in str(ve):
+                console.print("  export DEEPSEEK_API_KEY=your_api_key_here")
+            elif "OpenAI" in str(ve):
+                console.print("  export OPENAI_API_KEY=your_api_key_here")
+            elif "Anthropic" in str(ve):
+                console.print("  export ANTHROPIC_API_KEY=your_api_key_here")
+        
+        except litellm.exceptions.AuthenticationError as ae:
+            console.print(f"[bold red]Authentication Error:[/bold red] {str(ae)}")
+            model_name = config.model if hasattr(config, 'model') else "unknown model"
+            
+            if "deepseek" in str(ae).lower() or "deepseek" in model_name.lower():
+                console.print("For DeepSeek models:")
+                console.print("  1. Get your API key from https://platform.deepseek.com/api-keys")
+                console.print("  2. Set it as environment variable:")
+                console.print("     export DEEPSEEK_API_KEY=your_api_key_here")
+            
+            elif "openai" in str(ae).lower() or "openai" in model_name.lower():
+                console.print("For OpenAI models:")
+                console.print("  1. Get your API key from https://platform.openai.com/api-keys")
+                console.print("  2. Set it as environment variable:")
+                console.print("     export OPENAI_API_KEY=your_api_key_here")
+            
+            elif "anthropic" in str(ae).lower() or "anthropic" in model_name.lower():
+                console.print("For Anthropic models:")
+                console.print("  1. Get your API key from https://console.anthropic.com/settings/keys")
+                console.print("  2. Set it as environment variable:")
+                console.print("     export ANTHROPIC_API_KEY=your_api_key_here")
+            
+            else:
+                console.print("Please check your API key for the selected model:")
+                console.print(f"Model: {model_name}")
+        
+        except httpx.HTTPStatusError as he:
+            status_code = he.response.status_code
+            console.print(f"[bold red]HTTP Error {status_code}:[/bold red] {he.response.text}")
+            
+            if status_code == 401:
+                console.print("This usually indicates an invalid or missing API key.")
+                console.print("Please verify your API key and ensure it's set correctly.")
+            elif status_code == 429:
+                console.print("Too many requests. You may have exceeded your API quota.")
+                console.print("Consider upgrading your plan or waiting before making more requests.")
+            elif status_code == 500:
+                console.print("Server error. The model provider's API may be experiencing issues.")
+                console.print("Please try again later.")
+            else:
+                console.print(f"Unexpected HTTP error. Status code: {status_code}")
+        
+        except asyncio.TimeoutError:
+            console.print("[bold red]Operation timed out[/bold red]")
+            console.print("The model took too long to respond.")
+            console.print("You can try increasing the timeout with the --max-iters parameter.")
+        
+        except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
+            console.print(f"[bold red]Unexpected Error Traceback:[/bold red]\n{error_trace}")
+            console.print(f"[bold red]Unexpected Error:[/bold red] {str(e)}")
+            console.print("Please report this issue with the following information:")
+            console.print(f"- Model: {getattr(config, 'model', 'unknown')}")
+            console.print(f"- Command: {' '.join(sys.argv)}")
+            console.print(f"- Python: {sys.version}")
+            console.print(f"- LiteLLM: {litellm.__version__ if hasattr(litellm, '__version__') else 'unknown'}")
 
         console.clear()
         print_bug_report(files_to_analyze, bug_sets)
