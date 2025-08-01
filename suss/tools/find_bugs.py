@@ -83,7 +83,7 @@ def get_reasoning_model(model: str) -> str:
     elif model.startswith("anthropic/"):
         return "anthropic/claude-3-7-sonnet-20250219"
     elif model.startswith("deepseek/"):
-        return "deepseek/deepseek-coder"
+        return "deepseek-coder"
 
     return model
 
@@ -214,10 +214,12 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
         "role": "user",
         "content": f"<path>{file.rel_path}</path>\n<code>\n{file.content}\n</code>\n\n--\n\nAnalyze the file above for bugs.",
     }
+
     is_deepseek = model.startswith("deepseek/")
     response = await acompletion(
         model=get_reasoning_model(model),
         messages=[system_message, user_message],
+        api_base="https://api.deepseek.com/v1/chat/completions" if is_deepseek else None,
         response_format={
             "type": "json_object" if is_deepseek else "json_schema",
             "json_schema": None if is_deepseek else {
@@ -249,7 +251,6 @@ async def find_bugs(context: str, file: File, model: str) -> list[Bug]:
         thinking={"type": "enabled", "budget_tokens": MAX_THINKING_TOKENS},
         drop_params=True,
     )
-
     response = response.choices[0].message.content
     response = json_repair.loads(response)
 

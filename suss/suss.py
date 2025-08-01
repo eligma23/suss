@@ -44,7 +44,7 @@ class Config:
     file: str | None = None  # Specific file to scan for bugs
     root_dir: str | None = None
     max_iters: int = MAX_TOOL_CALLS
-    model: str = "deepseek/deepseek-coder"
+    model: str = "deepseek-coder"
 
 
 def clean_root_dir(root_dir: str | None = None) -> Path:

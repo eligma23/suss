@@ -1,5 +1,7 @@
 # Standard library
 from collections import defaultdict
+import json
+import logging
 
 # Third party
 import json_repair
@@ -16,10 +18,7 @@ except ImportError:
     from constants import MAX_MERGE_DISTANCE, MAX_CONTEXT_TOKENS
 
 
-#########
-# HELPERS
-#########
-
+logger = logging.getLogger(__name__)
 
 PROMPT = """I want to find all the code in a file that's relevant to a query.
 
@@ -28,7 +27,7 @@ Your output should be a list of line ranges. Each line range should correspond t
 Line ranges should be inclusive (e.g. {{"start": 12, "end": 15}} includes lines 12, 13, 14, and 15).
 
 ## Output Format Requirements
-You MUST output a JSON object with EXACTLY the following structure:
+Please output the result in **valid JSON format**. You MUST output a JSON object with EXACTLY the following structure:
 {{
   "bugs": [
     {{
@@ -67,24 +66,20 @@ def truncate_file_content(file: File) -> str:
     return file_str
 
 
-async def extract_chunks(file: File, query: str, model: str) -> list[Chunk]:
-    file_path = file.rel_path
-    file_content = truncate_file_content(file)
-    messages = [
-        {
-            "role": "user",
-            "content": PROMPT.format(
-                file_path=file_path, file_content=file_content, query=query
-            ),
-        },
-    ]
-    is_deepseek = model.startswith("deepseek/")
-    response = await acompletion(
-        model=model,
-        messages=messages,
-        response_format={
-            "type": "json_object" if is_deepseek else "json_schema",
-            "json_schema": None if is_deepseek else {
+def adapt_completion_args(model: str, messages: list) -> dict:
+    args = {
+        "model": model,
+        "messages": messages,
+        "drop_params": True,
+    }
+    
+    if model.startswith("deepseek/"):
+        args["api_base"] = "https://api.deepseek.com/v1/chat/completions"
+        logger.debug("Adapting request for DeepSeek API")
+    else:
+        args["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {
                 "name": "find_code_response",
                 "strict": True,
                 "schema": {
@@ -95,77 +90,78 @@ async def extract_chunks(file: File, query: str, model: str) -> list[Chunk]:
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "start": {
-                                        "type": "integer",
-                                        "description": "Starting line number (inclusive).",
-                                    },
-                                    "end": {
-                                        "type": "integer",
-                                        "description": "Ending line number (inclusive).",
-                                    },
+                                    "start": {"type": "integer"},
+                                    "end": {"type": "integer"},
                                 },
                                 "required": ["start", "end"],
                                 "additionalProperties": False,
                             },
-                            "description": "List of line ranges that contain relevant code.",
                         },
                     },
                     "required": ["line_ranges"],
                     "additionalProperties": False,
                 },
             },
-        },
-        drop_params=True,
-    )
-    response = json_repair.loads(response.choices[0].message.content)
-    line_ranges = [lr for lr in response["line_ranges"] if lr["start"] <= lr["end"]]
+        }
+    return args
+
+
+async def extract_chunks(file: File, query: str, model: str) -> list[Chunk]:
+    file_path = file.rel_path
+    file_content = truncate_file_content(file)
+    
+    messages = [{
+        "role": "user",
+        "content": PROMPT.format(
+            file_path=file_path, 
+            file_content=file_content, 
+            query=query
+        ),
+    }]
+
+    completion_args = adapt_completion_args(model, messages)
+    response = await acompletion(**completion_args)
+
+    try:
+        response_data = json_repair.loads(response.choices[0].message.content)
+    except json.JSONDecodeError:
+        repaired = response.choices[0].message.content.strip().strip("`")
+        response_data = json_repair.loads(repaired)
+
+    line_ranges = [lr for lr in response_data["line_ranges"] if lr["start"] <= lr["end"]]
     line_ranges = [list(range(lr["start"], lr["end"] + 1)) for lr in line_ranges]
-    chunks = [Chunk(line_nums, file) for line_nums in line_ranges]
-    return chunks
+    return [Chunk(line_nums, file) for line_nums in line_ranges]
 
 
 def clamp_chunks(chunks: list[Chunk]) -> list[Chunk]:
-    # Ensures that line numbers in chunks are within the file's range
-
     clamped_chunks = []
     for chunk in chunks:
         chunk.line_nums = [ln for ln in chunk.line_nums if ln <= chunk.file.last_lineno]
-        if not chunk.line_nums:
-            continue
-
-        clamped_chunks.append(chunk)
-
+        if chunk.line_nums:
+            clamped_chunks.append(chunk)
     return clamped_chunks
 
 
 def merge_chunks(chunks: list[Chunk]) -> list[Chunk]:
-    merged_chunks = []
     if not chunks:
-        return merged_chunks
+        return []
 
     chunks.sort(key=lambda chunk: chunk.line_nums[0])
+    merged = []
     curr_chunk = chunks[0]
-    for next_chunk in chunks[1:]:
-        curr_start, curr_end = curr_chunk.line_nums[0], curr_chunk.line_nums[-1]
-        next_start, next_end = next_chunk.line_nums[0], next_chunk.line_nums[-1]
 
-        is_overlapping = curr_end >= next_start
-        is_within_distance = next_start - curr_end < MAX_MERGE_DISTANCE
-        if is_overlapping or is_within_distance:
-            curr_chunk.line_nums = list(range(curr_start, next_end + 1))
+    for next_chunk in chunks[1:]:
+        curr_end = curr_chunk.line_nums[-1]
+        next_start = next_chunk.line_nums[0]
+        
+        if curr_end >= next_start or next_start - curr_end < MAX_MERGE_DISTANCE:
+            curr_chunk.line_nums = list(range(curr_chunk.line_nums[0], next_chunk.line_nums[-1] + 1))
         else:
-            merged_chunks.append(curr_chunk)
+            merged.append(curr_chunk)
             curr_chunk = next_chunk
 
-    merged_chunks.append(curr_chunk)
-    merged_chunks = list(set(merged_chunks))
-
-    return merged_chunks
-
-
-######
-# MAIN
-######
+    merged.append(curr_chunk)
+    return list(set(merged))
 
 
 class ReadFileTool(Tool):
@@ -177,7 +173,6 @@ class ReadFileTool(Tool):
         update_progress: callable,
         **kwargs,
     ):
-        # Base attributes
         self.name = "read_file"
         self.description = "Read (search within) a file in the codebase. Returns the most relevant parts of the file."
         self.parameters = {
@@ -185,7 +180,7 @@ class ReadFileTool(Tool):
             "properties": {
                 "intent": {
                     "type": "string",
-                    "description": "Concise, one-sentence description of your intent behind reading the file. E.g. 'Find the definition of handle_auth', 'Look for helper functions for the parser', etc.",
+                    "description": "Concise description of your intent behind reading the file.",
                 },
                 "file": {
                     "type": "string",
@@ -194,15 +189,13 @@ class ReadFileTool(Tool):
                 },
                 "query": {
                     "type": "string",
-                    "description": "A semantic search query. What are you looking for in the file?",
+                    "description": "A semantic search query.",
                 },
             },
             "required": ["intent", "file", "query"],
             "additionalProperties": False,
         }
         self.is_terminal = False
-
-        # Additional attributes
         self.index = index
         self.model = model
         self.target_file = target_file
@@ -219,40 +212,32 @@ class ReadFileTool(Tool):
                 formatted_chunk = f"<{file.rel_path}>\n{chunk.to_string(dots=False)}\n</{file.rel_path}>"
                 formatted_chunks.append(formatted_chunk)
 
-        formatted_chunks = "\n\n".join(formatted_chunks)
-        return formatted_chunks
+        return "\n\n".join(formatted_chunks)
 
     def update_definition(self, trajectory: list[Message] = [], **kwargs):
         files = set()
         for message in trajectory:
-            if not message.raw_output:
-                continue
+            if message.raw_output:
+                for item in message.raw_output:
+                    if isinstance(item, File):
+                        files.add(item.rel_path)
+                    elif isinstance(item, Chunk):
+                        files.add(item.file.rel_path)
 
-            for item in message.raw_output:
-                if isinstance(item, File):
-                    files.add(item.rel_path)
-                elif isinstance(item, Chunk):
-                    files.add(item.file.rel_path)
-
-        files = [file for file in files if file != self.target_file.rel_path]
-        self.parameters["properties"]["file"]["enum"] = files
+        self.parameters["properties"]["file"]["enum"] = [
+            f for f in files if f != self.target_file.rel_path
+        ]
 
     def is_active(self, trajectory: list[Message] = [], **kwargs) -> bool:
         if not trajectory:
             return False
 
         for message in trajectory:
-            if not message.raw_output:
-                continue
-
-            for item in message.raw_output:
-                if isinstance(item, File):
-                    self.update_definition(trajectory)
-                    return True
-                elif isinstance(item, Chunk):
-                    self.update_definition(trajectory)
-                    return True
-
+            if message.raw_output:
+                for item in message.raw_output:
+                    if isinstance(item, (File, Chunk)):
+                        self.update_definition(trajectory)
+                        return True
         return False
 
     async def run(self, intent: str, file: str, query: str, **kwargs) -> list[Chunk]:
@@ -262,7 +247,3 @@ class ReadFileTool(Tool):
         chunks = clamp_chunks(chunks)
         chunks = merge_chunks(chunks)
         return chunks
-
-
-# TODO: Allow for multiple files
-# TODO: Alternative approach: chunk up each file, embed the chunks, then do vector search
